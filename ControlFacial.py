@@ -17,41 +17,70 @@ import time
 import os
 import copy
 
-def CrearResnet18(pesos):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+import serial
+import cv2 as OpenCV
+
+def Resnet18(pesos,clases = 5):
     ResnetFacial = models.resnet18(pretrained=True)
     num_ftrs = ResnetFacial.fc.in_features
-    ResnetFacial.fc = nn.Linear(num_ftrs, 5)
+    ResnetFacial.fc = nn.Linear(num_ftrs, clases)
     ResnetFacial = ResnetFacial.to(device)
     ResnetFacial.load_state_dict(torch.load(pesos))
-    pass
+    return ResnetFacial
 
 def Normalizar(x):
     normalized = (x-np.min(x))/(np.max(x)-np.min(x))
     return normalized
 
 def Conversion(imagen):
-    image = Image.open(imagen)
-    Imagen = transforms.Compose([transforms.Resize(256),transforms.CenterCrop(224),transforms.ToTensor(),transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-    image = Imagen(image)
+    pil_image = OpenCV.cvtColor(imagen, OpenCV.COLOR_BGR2RGB)
+    image = Image.fromarray(pil_image)
+    trans = transforms.Compose([transforms.Resize(256),transforms.CenterCrop(224),transforms.ToTensor(),transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+    image = trans(image)
     image = Variable(image, requires_grad=True)
     image = image.unsqueeze(0)
     return image.cuda()
 
-def Prueba(direccion,imagen):
+def Prueba(ResnetFacial, imagen):
     clases = ['Abajo','Arriba','Derecha','Izquierda','Neutro']
-    ruta = os.path.join(direccion,imagen)
     with torch.no_grad():
         ResnetFacial.eval()
-        outputs = ResnetFacial(Conversion(ruta))
+        outputs = ResnetFacial(Conversion(imagen))
         _, preds = torch.max(outputs,1)
-    Resultados = Normalizar(outputs.data.cpu().numpy())
-    print(Resultados , clases[preds],'\n')
-    pass
+        Resultados = Normalizar(outputs.data.cpu().numpy())
+    return ''.join(str(Resultados)) + ''.join(str(clases[preds]))
 
-CrearResnet18('Resnet18Facial.pth')
-Prueba(r'C:\Users\secan\Desktop\\Biomédica\TransferLearning\Training Seti',r'IMG_20180806_080759337_BURST000_COVER.jpg')
-Prueba(r'C:\Users\secan\Desktop\\Biomédica\TransferLearning\Training Seti',r'IMG_20180806_080827898_BURST001.jpg')
-Prueba(r'C:\Users\secan\Desktop\\Biomédica\TransferLearning\Training Seti',r'IMG_20180806_080844840_BURST025.jpg')
-Prueba(r'C:\Users\secan\Desktop\\Biomédica\TransferLearning\Training Seti',r'IMG_20180806_080903315_BURST001.jpg')
-Prueba(r'C:\Users\secan\Desktop\\Biomédica\TransferLearning\Training Seti',r'IMG_20180806_080922110_BURST023.jpg')
+def ControlPorGestos(inicio = True):
+    elapsed = 0;
+    font = OpenCV.FONT_HERSHEY_SIMPLEX
+    cam = OpenCV.VideoCapture(0)
+    ret_val, img = cam.read()
+    prueba = Prueba(Modelo,img)
+    inicio = time.time()
+    while True:
+        ret_val, img = cam.read()
+        if elapsed >= 0.1:
+            prueba = Prueba(Modelo,img)
+            inicio = fin
+        ImgDone = OpenCV.putText(img,prueba,(5,400), font, 0.55,(0,0,0),1,OpenCV.LINE_AA)
+        OpenCV.imshow('Reconocimiento facial', ImgDone)
+        if OpenCV.waitKey(1) == 27:
+            break  # esc to quit
+        fin = time.time()
+        elapsed = fin - inicio
+    OpenCV.destroyAllWindows()
+    cam.release();
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+pesos = 'Resnet18Facial.pth'
+Modelo = Resnet18(pesos)
+Lectura = OpenCV.VideoCapture(0)
+
+valido, foto = Lectura.read()
+if valido == True:
+    print('Foto lista')
+else:
+    print('Error al iniciar cámara')
+Lectura.release()
+
+ControlPorGestos();
