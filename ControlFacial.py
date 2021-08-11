@@ -42,13 +42,12 @@ def Conversion(imagen):
     return image.cuda()
 
 def Prueba(ResnetFacial, imagen):
-    clases = ['Abajo','Arriba','Derecha','Izquierda','Neutro']
     with torch.no_grad():
         ResnetFacial.eval()
         outputs = ResnetFacial(Conversion(imagen))
         _, preds = torch.max(outputs,1)
         Resultados = Normalizar(outputs.data.cpu().numpy())
-    return ''.join(str(Resultados)) + ''.join(str(clases[preds]))
+    return ''.join(str(clases[preds]))
 
 def ControlPorGestos(inicio = True):
     elapsed = 0;
@@ -61,8 +60,9 @@ def ControlPorGestos(inicio = True):
         ret_val, img = cam.read()
         if elapsed >= 0.1:
             prueba = Prueba(Modelo,img)
+            Accion(prueba)
             inicio = fin
-        ImgDone = OpenCV.putText(img,prueba,(5,400), font, 0.55,(0,0,0),1,OpenCV.LINE_AA)
+        ImgDone = OpenCV.putText(img,prueba,(100,400), font, 4,(0,0,0),2,OpenCV.LINE_AA)
         OpenCV.imshow('Reconocimiento facial', ImgDone)
         if OpenCV.waitKey(1) == 27:
             break  # esc to quit
@@ -70,7 +70,22 @@ def ControlPorGestos(inicio = True):
         elapsed = fin - inicio
     OpenCV.destroyAllWindows()
     cam.release();
+    arduino.close();
 
+def Accion(Gesto):
+    if Gesto == clases[0]:
+        arduino.write(b'0')
+    if Gesto == clases[1]:
+        arduino.write(b'1')
+    if Gesto == clases[2]:
+        arduino.write(b'2')
+    if Gesto == clases[3]:
+        arduino.write(b'3')
+    if Gesto == clases[4]:
+        arduino.write(b'4s')
+
+clases = ['Abajo','Arriba','Derecha','Izquierda','Neutro']
+arduino = serial.Serial('COM1', 9600)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 pesos = 'Resnet18Facial.pth'
 Modelo = Resnet18(pesos)
@@ -84,3 +99,4 @@ else:
 Lectura.release()
 
 ControlPorGestos();
+arduino.close()
