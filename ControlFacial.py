@@ -18,6 +18,8 @@ import os
 import copy
 
 import serial
+import warnings
+import serial.tools.list_ports
 import cv2 as OpenCV
 
 def Resnet18(pesos,clases = 5):
@@ -49,6 +51,19 @@ def Prueba(ResnetFacial, imagen):
         Resultados = Normalizar(outputs.data.cpu().numpy())
     return ''.join(str(clases[preds]))
 
+def BuscaArduino():
+    arduino_ports = [
+        p.device
+        for p in serial.tools.list_ports.comports()
+        if 'Arduino' in p.description
+    ]
+    if not arduino_ports:
+        raise IOError("No Arduino")
+    if len(arduino_ports) > 1:
+        warnings.warn('Usar primer arduino encontrado')
+    arduino = serial.Serial(arduino_ports[0],9600)
+    return arduino
+
 def ControlPorGestos(inicio = True):
     elapsed = 0;
     font = OpenCV.FONT_HERSHEY_SIMPLEX
@@ -60,9 +75,12 @@ def ControlPorGestos(inicio = True):
         ret_val, img = cam.read()
         if elapsed >= 0.1:
             prueba = Prueba(Modelo,img)
-            Accion(prueba)
+            try:
+                Accion(prueba)
+            except serial.serialutil.SerialException:
+                prueba = 'No hay arduino'
             inicio = fin
-        ImgDone = OpenCV.putText(img,prueba,(100,400), font, 4,(0,0,0),2,OpenCV.LINE_AA)
+        ImgDone = OpenCV.putText(img,prueba,(50,400), font, 3,(255,255,255),2,OpenCV.LINE_AA)
         OpenCV.imshow('Reconocimiento facial', ImgDone)
         if OpenCV.waitKey(1) == 27:
             break  # esc to quit
@@ -82,10 +100,10 @@ def Accion(Gesto):
     if Gesto == clases[3]:
         arduino.write(b'3')
     if Gesto == clases[4]:
-        arduino.write(b'4s')
+        arduino.write(b'4')
 
 clases = ['Abajo','Arriba','Derecha','Izquierda','Neutro']
-arduino = serial.Serial('COM1', 9600)
+arduino = BuscaArduino();
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 pesos = 'Resnet18Facial.pth'
 Modelo = Resnet18(pesos)
@@ -99,4 +117,4 @@ else:
 Lectura.release()
 
 ControlPorGestos();
-arduino.close()
+print(arduino_ports[0])
